@@ -1,6 +1,5 @@
 import numpy as np 
 from xarm7_lib import Robot 
-from libcapstone import LightsaberDetector
 
 class Robot_Computator():
     def __init__(self): 
@@ -11,7 +10,8 @@ class Robot_Computator():
                                        (77.5, np.pi/2, 342.5, 0), 
                                        (0, np.pi/2, 0, 0), 
                                        (76, -np.pi/2, 269, 0)] 
-        self.DoF = 7  
+        self.DoF = 7
+        self.transform = []
     
     def _rotation_matrix_x(self, theta):
         return np.array([[1, 0, 0, 0], 
@@ -45,6 +45,7 @@ class Robot_Computator():
         return rot_x @ trans_x @ rot_z @ trans_z 
         
     def forward_kinematics(self, configuration):
+        self.transform = []
         a, alpha, d, _ = self.x_arm_kinematic_params[0]
         result = self._modified_dh_params(a, alpha, d, configuration[0]) # T_0_1 
         self.transform.append(result)
@@ -78,51 +79,69 @@ class Robot_Computator():
     
 def main(): 
     from xarm7_lib import Robot
-    from libcapstone import LightsaberDetector
 
-    robot_computator = Robot_Computator() 
-    
-    with Robot() as robot: 
-        robot.free_drive()
-        input('Enter to stop\n')
-        q_current = np.asarray(robot.joint_values(), dtype=float)
-        print("q_current =", q_current)
-        ee_pose = Robot_Computator.foward_kinematics(q_current)
-        print("ee_pose =", ee_pose)
-        robot.end_free_drive()
-    
-    """
-    from xarm7_lib import Robot
-    from libcapstone import LightsaberDetector
-    
-    detector = LightsaberDetector()
     robot_computator = Robot_Computator() 
     
     with Robot() as robot:
-        robot.register_visualizer(detector)
+        # STEP 1 OF MILESTONE 1
+        """
+        robot.set_joint_targets([0, 0, 0, 0, 0, 0, 0]) # home pose
+        q_current = robot.joint_values
+        start_pose = robot_computator.forward_kinematics(q_current)[:3, 3]
+        print("initial pose = ", start_pose)
+        
+        num_steps = 10
+        dt = 1.0 / num_steps
+        for i in range(3):
+            for _ in range(num_steps):
+                desired_motion = np.zeros(3)
+                desired_motion[i] = 100
 
-        num_steps = 100 
-        dt = 1.0 / num_steps 
+                delta_x = desired_motion / num_steps
+                x_dot = delta_x / dt
+                q_current = np.asarray(robot.joint_values, dtype=float)
+                q_dot = np.linalg.pinv(robot_computator.jacobian(q_current)) @ x_dot
+                q_next = q_current + q_dot * dt
+                robot.set_joint_targets(q_next)
+
+            q_current = robot.joint_values
+            end_pose = robot_computator.forward_kinematics(q_current)[:3, 3] 
+            print(f"{i}end pose = ", end_pose)
+            print(f"{i}th delta = ", end_pose - start_pose)
         
+        """
+        # STEP 2 OF MILESTONE 1 
+        robot.grip(1.0)
+        robot.free_drive()
+        input("Enter to stop\n")
+        robot.end_free_drive()
+
+        saved_pose_q = np.array([0.027495, 0.226465, 0.070983, 0.349805, 0.038457, 0.141063, 0.033092])
+        robot.set_joint_targets(saved_pose_q)
+
+        num_steps = 10
+        dt = 1.0 / num_steps
+
         for _ in range(num_steps):
-            delta_x = np.array([0.01, 0, 0]) / num_steps
-            x_dot = delta_x / dt 
-            
-            q_current = np.asarray(robot.joint_values(), dtype=float)
+            delta_x = np.array([0, 0, -35]) / num_steps
+            x_dot = delta_x / dt
+            q_current = np.asarray(robot.joint_values, dtype=float)
             q_dot = np.linalg.pinv(robot_computator.jacobian(q_current)) @ x_dot
-            
-            q_next = q_current + q_dot * dt 
-            
+            q_next = q_current + q_dot * dt
             robot.set_joint_targets(q_next)
-        
+
+        robot.grip(0.27, speed=0.2)
+
+        for _ in range(num_steps):
+            delta_x = np.array([0, 0, 35]) / num_steps
+            x_dot = delta_x / dt
+            q_current = np.asarray(robot.joint_values, dtype=float)
+            q_dot = np.linalg.pinv(robot_computator.jacobian(q_current)) @ x_dot
+            q_next = q_current + q_dot * dt
+            robot.set_joint_targets(q_next)
+
         robot.stop()
-    """
-    
+           
 if __name__ == "__main__":
     main()
-        
-        
     
-
-    
-
