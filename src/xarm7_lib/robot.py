@@ -268,8 +268,7 @@ class Robot(RobotInterface):
                 "simulation. Set ROBOT_IP and construct Robot() without sim=True."
             )
         return self.robot
-
-
+ 
 if __name__ == '__main__':
     import numpy as np
     import time
