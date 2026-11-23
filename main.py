@@ -1,15 +1,16 @@
 import numpy as np 
 from xarm7_lib import Robot 
+from scipy.spatial.transform import Rotation 
 
 class Robot_Computator():
     def __init__(self): 
-        self.x_arm_kinematic_params = [(0, 0, 267, 0), 
+        self.x_arm_kinematic_params = [(0, 0, 0.267, 0), 
                                        (0, -np.pi/2, 0, 0), 
-                                       (0, np.pi/2, 293, 0), 
-                                       (52.5, np.pi/2, 0, 0),
-                                       (77.5, np.pi/2, 342.5, 0), 
+                                       (0, np.pi/2, 0.293, 0), 
+                                       (0.0525, np.pi/2, 0, 0),
+                                       (0.0775, np.pi/2, 0.3425, 0), 
                                        (0, np.pi/2, 0, 0), 
-                                       (76, -np.pi/2, 269, 0)] 
+                                       (0.076, -np.pi/2, 0.269, 0)] 
         self.DoF = 7
         self.transform = []
     
@@ -62,7 +63,7 @@ class Robot_Computator():
         self.forward_kinematics(configuration) 
         
         ee_pose = self.transform[-1][:3, 3]
-        result = np.zeros((3, self.DoF))
+        result = np.zeros((6, self.DoF))
         axis_local = np.array([0, 0, 1])
         
         for i in range(self.DoF):
@@ -70,21 +71,51 @@ class Robot_Computator():
             r_vec = ee_pose - current_pose 
             rotation = self.transform[i][:3, :3]
             
-            w = rotation @ axis_local
-            ang_vec = np.cross(w, r_vec) 
+            angular_base = rotation @ axis_local
+            linear_vec = np.cross(angular_base, r_vec) 
             
-            result[:, i] = ang_vec 
+            result[:3, i] = linear_vec 
+            result[3:, i] = angular_base
             
-        return result
-    
+        return result # 6 by 7 jacobian matrix
+
+    def inverse_kinematics(self, q_current, desired_ee_pose): 
+        iterations = 10000
+        learning_rate = 0.5
+        tolerance = 1e-5
+        
+        desired_pos = desired_ee_pose[:3, 3] 
+        desired_rot = desired_ee_pose[:3, :3]
+        
+        for _ in range(iterations): 
+            current_pose = self.forward_kinematics(q_current) # 4 by 4 matrix 
+            curr_pos = current_pose[:3, 3]
+            curr_rot = current_pose[:3, :3]
+            
+            pos_error = curr_pos - desired_pos 
+            rot_diff = curr_rot @ desired_rot.T
+            rot_error = Rotation.from_matrix(rot_diff).as_rotvec()
+            
+            error = np.concatenate((pos_error, rot_error))
+            print(np.linalg.norm(error))
+
+            if np.linalg.norm(error) < tolerance:
+                return q_current
+            
+            gradient = self.jacobian(q_current).T @ error
+            q_current = q_current - learning_rate * gradient
+        
+        return q_current
+            
 def main(): 
     from xarm7_lib import Robot
 
     robot_computator = Robot_Computator() 
     
+    """
     with Robot() as robot:
         # STEP 1 OF MILESTONE 1
-        """
+        
         robot.set_joint_targets([0, 0, 0, 0, 0, 0, 0]) # home pose
         q_current = robot.joint_values
         start_pose = robot_computator.forward_kinematics(q_current)[:3, 3]
@@ -109,7 +140,6 @@ def main():
             print(f"{i}end pose = ", end_pose)
             print(f"{i}th delta = ", end_pose - start_pose)
         
-        """
         # STEP 2 OF MILESTONE 1 
         robot.grip(1.0)
         robot.free_drive()
@@ -141,6 +171,21 @@ def main():
             robot.set_joint_targets(q_next)
 
         robot.stop()
+        """
+        
+    # STEP 1 of MILESTONE 2 
+    desired_ee_pose = np.array([[1, 0, 0, 0.5], 
+                                [0, -1, 0, 0], 
+                                [0, 0, -1, 0], 
+                                [0, 0, 0, 1]])
+    q_current = np.array([0, 0, 0, 0, 0, 0, 0])
+    
+    q = robot_computator.inverse_kinematics(q_current, desired_ee_pose)
+    print(q)
+    ee_pose = robot_computator.forward_kinematics(q)
+    print(ee_pose)
+    
+
            
 if __name__ == "__main__":
     main()
